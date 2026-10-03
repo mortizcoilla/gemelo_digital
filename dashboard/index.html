@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Gemelo digital ligero de subestacion electrica: deteccion temprana no supervisada con SCADA/PMU, alertas conformal calibradas y aprendizaje federado. Dashboard interactivo en D3.js.">
+  <title>Gemelo Digital Ligero de Subestacion | Dashboard SCADA/PMU</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="vendor/d3.v7.min.js"></script>
+</head>
+<body>
+
+<!-- Header -->
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <path d="M11 2L3 11h6l-2 8 9-10h-6l1-7z" fill="#f4d35e"/>
+    </svg>
+    <span>Gemelo Digital Ligero</span>
+    <span class="muted">/ Subestacion SCADA + PMU</span>
+  </div>
+  <div class="topbar-status">
+    <div class="pill pill-ok"><span class="dot"></span><span id="globalStatus">EN LINEA</span></div>
+    <div class="pill"><span class="lbl">SE</span><span id="seId">SE-PADRE-01</span></div>
+    <div class="pill"><span class="lbl">t</span><span id="simClock">--:--</span></div>
+    <div class="pill"><span class="lbl">fps</span><span id="fpsCounter">--</span></div>
+  </div>
+</header>
+
+<!-- Controles del stream -->
+<section class="controls">
+  <div class="ctl-group">
+    <button class="ctl-btn primary" id="btnPlay">❚❚ Pausar</button>
+    <div class="ctl-seg" id="speedCtl">
+      <button class="spd active" data-mult="1">1x</button>
+      <button class="spd" data-mult="4">4x</button>
+      <button class="spd" data-mult="16">16x</button>
+    </div>
+    <button class="ctl-btn" id="btnReset">↺ Reiniciar</button>
+  </div>
+  <div class="ctl-group">
+    <span class="ctl-label">Inyectar falla:</span>
+    <select id="injectSel" class="ctl-select">
+      <option value="F1">F1 · Cortocircuito L1</option>
+      <option value="F2">F2 · Sobrecarga L2</option>
+      <option value="F3">F3 · Sobretension AT</option>
+      <option value="F4">F4 · Degradacion aislamiento</option>
+      <option value="F5">F5 · Perdida PMU</option>
+      <option value="F6">F6 · Desbalance de cargas</option>
+      <option value="F7">F7 · Falla de buje</option>
+      <option value="F8">F8 · Evento climatico</option>
+    </select>
+    <button class="ctl-btn danger" id="btnInject">Inyectar</button>
+  </div>
+</section>
+
+<!-- KPIs -->
+<section class="kpis" id="kpisBody"></section>
+
+<!-- Layout principal: 12 cols grid -->
+<main class="grid">
+
+  <!-- Topologia unifilar -->
+  <section class="card span-4 row-2" id="cardTopology">
+    <header class="card-header">
+      <h2>Topologia unifilar</h2>
+      <span class="muted">110/23 kV · 2 trafos · 4 alimentadores</span>
+    </header>
+    <div class="card-body" id="topologyBody"></div>
+    <footer class="card-footer">
+      <div class="kv"><span>Estado</span><b id="topoEstado">Operacion normal</b></div>
+      <div class="kv"><span>Tap T1/T2</span><b id="tapPos">0 / 0</b></div>
+    </footer>
+  </section>
+
+  <!-- Series de tiempo SCADA -->
+  <section class="card span-8" id="cardSignals">
+    <header class="card-header">
+      <h2>Senales SCADA / PMU</h2>
+      <div class="tabs" id="signalTabs">
+        <button class="tab active" data-feat="V_at">V_AT</button>
+        <button class="tab" data-feat="I_L1">I_L1</button>
+        <button class="tab" data-feat="I_L2">I_L2</button>
+        <button class="tab" data-feat="I_L3">I_L3</button>
+        <button class="tab" data-feat="I_L4">I_L4</button>
+        <button class="tab" data-feat="P_total">P</button>
+        <button class="tab" data-feat="f">f [Hz]</button>
+        <button class="tab" data-feat="T_dev_T1">T_dev</button>
+        <button class="tab" data-feat="thd_V">THD V</button>
+        <button class="tab" data-feat="cos_phi">cos φ</button>
+        <button class="tab" data-feat="desbalance">Desbal.</button>
+      </div>
+    </header>
+    <div class="card-body" id="signalsBody"></div>
+  </section>
+
+  <!-- Score conformal + contribuciones -->
+  <section class="card span-8" id="cardScore">
+    <header class="card-header">
+      <h2>Deteccion conformal</h2>
+      <div class="muted" id="residualSummary">--</div>
+    </header>
+    <div class="card-body score-flex">
+      <div class="score-main" id="scoreBody"></div>
+      <div class="score-side">
+        <h3 class="sub">Features que impulsan el score</h3>
+        <div id="featBarsBody"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Alertas conformal -->
+  <section class="card span-4 row-2" id="cardAlerts">
+    <header class="card-header">
+      <h2>Alertas conformal</h2>
+      <span class="muted">α = 0.05 · FPR garantizado ≤ 5%</span>
+    </header>
+    <div class="card-body" id="alertsBody">
+      <div class="alert-meter">
+        <svg viewBox="0 0 120 120" width="128" height="128" aria-hidden="true">
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#222" stroke-width="10"/>
+          <circle id="alertArc" cx="60" cy="60" r="50" fill="none" stroke="#2ca02c"
+                  stroke-width="10" stroke-linecap="round"
+                  transform="rotate(-90 60 60)"
+                  stroke-dasharray="0 314"/>
+          <text id="alertScore" x="60" y="60" text-anchor="middle"
+                font-size="22" font-weight="700" fill="#eee">0.00</text>
+          <text x="60" y="80" text-anchor="middle" font-size="9" fill="#888">REC ERROR</text>
+        </svg>
+        <div class="alert-meter-text">
+          <div class="kv"><span>Umbral q̂</span><b id="alertThreshold">--</b></div>
+          <div class="kv"><span>Calibracion</span><b id="alertCal">0%</b></div>
+          <div class="kv"><span>FPR empirico</span><b id="alertFpr">--</b></div>
+          <div class="kv"><span>Cobertura</span><b id="alertCoverage">--</b></div>
+        </div>
+      </div>
+      <h3 class="sub">Eventos recientes</h3>
+      <ul class="alert-list" id="alertList"></ul>
+    </div>
+  </section>
+
+  <!-- Heatmap de residuos -->
+  <section class="card span-8" id="cardHeatmap">
+    <header class="card-header">
+      <h2>Mapa de calor residual</h2>
+      <span class="muted">22 features × 90 s · click en etiqueta = ver en senales</span>
+    </header>
+    <div class="card-body" id="heatmapBody"></div>
+  </section>
+
+  <!-- Federated view -->
+  <section class="card span-8" id="cardFederated">
+    <header class="card-header">
+      <h2>Aprendizaje federado entre subestaciones</h2>
+      <span class="muted">FedAvg · 3 SEs · 4 rondas</span>
+    </header>
+    <div class="card-body">
+      <div class="fed-grid">
+        <div class="fed-map-wrap" id="fedMap"></div>
+        <div class="fed-stats">
+          <div class="kv"><span>Rondas completadas</span><b id="fedRounds">0</b></div>
+          <div class="fed-progress"><div class="fed-progress-bar" id="fedBar"></div></div>
+          <div class="kv"><span>Loss global</span><b id="fedLoss">--</b></div>
+          <div class="kv"><span>Gap vs centralizado</span><b id="fedGap">--</b></div>
+          <div class="kv"><span>Datos crudos movidos</span><b>0 MB</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Timeline de eventos -->
+  <section class="card span-12" id="cardTimeline">
+    <header class="card-header">
+      <h2>Timeline de eventos · 4 h de simulacion</h2>
+      <span class="muted">verde = detectado por conformal · rojo = sin detectar · rombo = primera alerta</span>
+    </header>
+    <div class="card-body" id="timelineBody"></div>
+  </section>
+
+  <!-- Metricas -->
+  <section class="card span-12" id="cardMetrics">
+    <header class="card-header">
+      <h2>Metricas de detectores</h2>
+      <span class="muted">fila 1: en vivo sobre este stream · resto: bloque test del notebook</span>
+    </header>
+    <div class="card-body">
+      <table class="metrics-table">
+        <thead>
+          <tr>
+            <th>Detector</th>
+            <th>FPR</th>
+            <th>TPR</th>
+            <th>F1</th>
+            <th>AUC</th>
+            <th>Privacidad</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="metricsRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<!-- Footer con autor (regla hard: sin titulos) -->
+<footer class="footer">
+  <div class="author">
+    <b>Miguel Ortiz Coilla</b>
+  </div>
+  <div class="contact">
+    <a href="https://www.linkedin.com/in/miguelortizcoilla" target="_blank" rel="noopener" aria-label="LinkedIn">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM8 17H5.5v-7H8v7zm-1.2-8a1.4 1.4 0 1 1 0-2.8 1.4 1.4 0 0 1 0 2.8zM18 17h-2.5v-3.6c0-1-.4-1.6-1.3-1.6-.7 0-1.1.5-1.3 1-.1.2-.1.4-.1.7V17H10v-7h2.5v1c.4-.6 1-1.4 2.5-1.4 1.8 0 3 1.2 3 3.7V17z"/></svg>
+      LinkedIn
+    </a>
+    <a href="mailto:miguel.ortiz.coilla@gmail.com" aria-label="Email">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v.4l8 5 8-5V6H4zm16 2.6-7.4 4.6a1 1 0 0 1-1.2 0L4 8.6V18h16V8.6z"/></svg>
+      Email
+    </a>
+    <a href="https://wa.me/569XXXXXXXX" target="_blank" rel="noopener" aria-label="WhatsApp">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20 12a8 8 0 0 1-12.2 6.8L4 20l1.3-3.7A8 8 0 1 1 20 12zm-8-6a6 6 0 0 0-5 9l-.7 2 2.1-.6A6 6 0 1 0 12 6zm3.4 9c-.2 0-.6 0-1-.4-.4-.3-1.6-.8-1.7-.8 0 0-1.5-.5-1.6-.5 0 0-.6-.2-.6-.6 0-.4.2-.6.3-.7l.4-.4c.2-.2.4-.3.4-.7 0-.4-.6-1.4-.7-1.6-.1-.2-.3-.3-.6-.3h-.5c-.2 0-.4 0-.7.3-.2.3-.8.8-.8 2 0 1.2.9 2.3 1 2.5.1.1 1.6 2.4 4 3.3.6.2 1 .4 1.4.5.6.2 1.1.1 1.5.1.4-.1 1.4-.6 1.6-1.1.2-.6.2-1 .1-1.1 0-.2-.2-.3-.5-.4z"/></svg>
+      WhatsApp
+    </a>
+  </div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

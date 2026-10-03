@@ -1,0 +1,15 @@
+# Dependencias para el notebook y dashboard
+
+# Notebook (ejecucion local)
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+matplotlib>=3.8
+scikit-learn>=1.4
+torch>=2.0 --index-url https://download.pytorch.org/whl/cpu
+jupyter>=1.0
+ipykernel>=6.25
+notebook>=7.0
+
+# Dashboard (no requiere dependencias en Python)
+# Solo necesita D3.js v7 cargado por CDN en el HTML

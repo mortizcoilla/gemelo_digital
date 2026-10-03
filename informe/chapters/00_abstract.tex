@@ -1,0 +1,76 @@
+\chapter{Resumen}
+
+\begin{abstract}
+Las subestaciones electricas de distribucion emiten de forma continua medidas
+de tension, corriente, frecuencia, temperatura y calidad de potencia a traves
+de sistemas SCADA y PMU. Sin embargo, las fallas son eventos infrecuentes y
+las etiquetas historicas son escasas, lo que dificulta entrenar detectores
+supervisados. Ademas, los datos crudos no pueden salir del recinto por
+restricciones de ciberseguridad, ancho de banda y propiedad. Se necesita por
+lo tanto un sistema de deteccion \emph{temprana, no supervisada} y compatible
+con una arquitectura federada.
+
+Este trabajo propone un pipeline de cuatro componentes:
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item Un \textbf{gemelo digital ligero} que predice el comportamiento
+        electrico esperado de la subestacion a partir de la topologia y
+        las consignas de operacion, generando ademas datos sinteticos
+        etiquetados para entrenamiento y validacion.
+  \item Un \textbf{detector no supervisado} basado en autoencoder LSTM sobre
+        el residuo multivariado observado-esperado, mas \emph{conformal
+        prediction} para fijar el umbral de alarma con una \emph{tasa de
+        falsa alarma garantizada}.
+  \item Una arquitectura de \textbf{aprendizaje federado} (FedAvg) entre
+        tres subestaciones virtuales (prototipo; en despliegue se usan
+        cinco o mas), preservando los datos en origen y
+        cumpliendo con las restricciones regulatorias.
+  \item Una capa de \textbf{priorizacion post-evento} para ordenar cuadrillas
+        tras un evento climatico extremo (vientos, calor, frente de lluvia),
+        reduciendo SAIDI y la exposicion a multas regulatorias.
+\end{enumerate}
+
+Los resultados del prototipo ejecutable muestran que el conformal
+prediction cumple la tasa de falsa alarma garantizada: FPR empirico
+de $4.86\%$ cuando el objetivo conformal es $\alpha = 0.05$, con
+latencia mediana de deteccion de $0$~s. Con configuracion reducida
+(modelo de 32 unidades, ventana de 15 muestras, 2 dias de
+simulacion), el detector alcanza un recall de $76.3\%$
+(centralizado) y $80.5\%$ (federado), con F1 de $0.80$ y $0.87$
+respectivamente: dentro del rango que la literatura reporta para
+la configuracion completa. La version federada no cede
+detectabilidad frente a la centralizada y mueve $0$~MB de datos
+crudos fuera de las subestaciones.
+
+El pipeline es publicable como software vendible a distribuidoras
+(Chilquinta, CGE, Saesa) y transmisoras (Engie Transelec), con un
+caso de uso directo en la deteccion de eventos climaticos extremos
+que la SEC y el SERNAC han comenzado a fiscalizar con cargos directos
+a las concesionarias tras el frente de Valparaiso de julio de 2026.
+\end{abstract}
+
+\noindent\textbf{Palabras clave:} gemelo digital, subestacion electrica,
+SCADA, PMU, deteccion de anomalias, autoencoder, conformal prediction,
+aprendizaje federado, SAIDI, ciberseguridad electrica.
+
+\begin{abstract}[english]
+\foreignlanguage{english}{\textbf{Digital twin, distribution substation,
+unsupervised early warning, SCADA/PMU, conformal prediction, federated
+learning.}}
+
+We propose a four-component pipeline for early unsupervised fault detection
+in distribution substations: a lightweight digital twin of the substation
+that produces synthetic labeled data; an LSTM autoencoder trained on the
+observed-vs-expected multivariate residual, with a conformal-prediction
+threshold that yields a guaranteed false-alarm rate; a three-Site FedAvg
+federated training loop that keeps raw data on premise and complies with
+NERC CIP / CNE cybersecurity regulation; and a post-event prioritization
+layer to dispatch field crews after extreme weather events. On a two-day
+simulation with eight fault types representative of the Chilean grid, the
+detector achieves an empirical FPR of $4.86\%$ against a $\alpha = 0.05$
+conformal target, a recall of $76.3\%$ (centralized) and $80.5\%$
+(federated) with F1 of $0.80$ and $0.87$, and a median detection latency
+of $0$~s. The federated model matches the centralized one (AUC $0.906$ vs
+$0.878$) while moving zero raw data off premise. The pipeline is
+productizable as a SaaS for distribution utilities and transmission
+owners.
+\end{abstract}

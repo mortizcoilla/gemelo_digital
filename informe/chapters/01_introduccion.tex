@@ -1,0 +1,132 @@
+\chapter{Introduccion}
+
+\subsection{Contexto}
+
+El sistema electrico chileno (SEN) alimenta a mas de 18 millones de habitantes
+a traves de una red de transmision troncal y mas de 600 subestaciones de
+distribucion que sirven a las principales concesionarias del pais:
+Chilquinta (Valparaiso), CGE (zona central-norte), Saesa (sur), Enel Distribucion
+(RM) y otras. La continuidad del servicio se mide por los indicadores SAIDI
+(duracion media de interrupcion) y SAIFI (frecuencia media), que son
+fiscalizados por la SEC y expuestos anualmente al SERNAC.
+
+El frente de mal tiempo de julio de 2026 en Valparaiso, con rafagas de viento
+superiores a 80 km/h y lluvias intensas que provocaron la caida de lineas de
+23~kV y la salida no programada de subestaciones, motivo cargos directos de la
+SEC contra Chilquinta y un procedimiento del SERNAC por reposicion tardia en
+cuadrillas. La fiscalizacion post-evento y la trazabilidad de las decisiones
+de despacho son ahora una prioridad operativa y reputacional.
+
+Las subestaciones modernas estan equipadas con:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{SCADA}: telemetría a 1-5~s de tension, corriente, potencia,
+        posicion de interruptores, alarma de protecciones.
+  \item \textbf{PMU} (\emph{Phasor Measurement Units}): sincrofasores a
+        25-50~fps con precision sincronizada por GPS, dan una vision
+        electromecanica fina del sistema.
+  \item Datos de calidad (THD, flicker, desbalance) y temperatura de
+        devanados de transformadores.
+\end{itemize}
+
+Estos datos son \emph{ideales} para entrenar modelos de deteccion temprana
+de anomalias, pero su uso en la practica enfrenta tres obstaculos que
+definen el problema de este trabajo:
+
+\begin{enumerate}[leftmargin=*,itemsep=4pt]
+  \item \textbf{Etiquetas casi inexistentes}. Las fallas son raras
+        ($\lambda \approx 0.5$/dia por subestacion segun statistic de SEC).
+        Aunque la falla ocurre, muchas veces la senal previa es ambigua
+        y los operadores la marcan \emph{a posteriori} solo si la
+        proteccion opero. Esto inutiliza los enfoques de clasificacion
+        supervisada convencionales.
+
+  \item \textbf{Datos que no pueden salir del recinto}. Cada
+        distribuidora considera sus datos como activo comercial y la
+        comparticion SER/NAL es voluntaria. Ademas, la normativa
+        NERC CIP y los estandares CNE chilenos exigen segregacion
+        estricta entre redes OT (operativas) e IT (corporativas).
+        Esto descarta el entrenamiento centralizado en la nube.
+
+  \item \textbf{Eventos climaticos extremos} cada vez mas frecuentes.
+        Frentes de viento, olas de calor y tormentas obligan a las
+        distribuidoras a \emph{priorizar} cuadrillas de reposicion.
+        Un sistema que solo alerte de fallas individuales es
+        insuficiente; hace falta un ranking de riesgo de
+        reposicion lenta por subestacion.
+\end{enumerate}
+
+\subsection{Propuesta}
+
+Este trabajo responde con un pipeline de cuatro componentes que se
+describen en los capitulos siguientes:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Gemelo digital ligero}: modelo fisico-estocastico de la
+        subestacion (estado estacionario + dinamica termica y de
+        regulador) que predice el comportamiento esperado. El gemelo
+        tambien genera datos sinteticos etiquetados para entrenar el
+        detector sin depender de fallas reales etiquetadas.
+
+  \item \textbf{Detector LSTM autoencoder + conformal prediction}:
+        aprende la dinamica normal del vector de desviaciones observado
+        versus esperado. La salida es un reconstruction error; sobre el
+        se aplica conformal prediction para fijar el umbral de
+        deteccion con una \emph{tasa de falsa alarma garantizada}
+        $\alpha = 0.05$.
+
+  \item \textbf{Entrenamiento federado (FedAvg)} entre cinco
+        subestaciones virtuales. Cada SE entrena un autoencoder local;
+        un orquestador promedia los pesos. Los datos crudos nunca
+        salen del recinto, cumpliendo con la normativa y preservando
+        la propiedad.
+
+  \item \textbf{Priorizacion post-evento}: tras un evento climatico
+        extremo (frente de viento, ola de calor), el sistema entrega un
+        orden de despacho de cuadrillas por subestacion, ponderando
+        detecciones recientes, estado termico y criticidad geografica.
+\end{enumerate}
+
+\subsection{Aportes}
+
+Los aportes originales son:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item Demostracion de que un \emph{gemelo digital simplificado} de
+        subestacion produce residuos con suficiente senal/ruido para
+        entrenar detectores no supervisados en el dominio de distribucion
+        chilena.
+
+  \item Validacion experimental (sobre simulacion calibrada con datos
+        CEN publicos) de que un \emph{autoencoder LSTM} entrenado
+        sobre los residuos del gemelo alcanza un FPR empirico de
+        $4.86\%$ contra el objetivo conformal del $5\%$, con recall
+        de $76$-$80\%$ y latencia mediana de deteccion nula,
+        preservando la confianza del operador.
+
+  \item Cuantificacion del \emph{costo de privacidad}: en el
+        prototipo no hay costo medible -- el modelo federado iguala
+        o supera al centralizado -- mientras que los datos nunca
+        abandonan el recinto.
+
+  \item Una \emph{arquitectura de producto} lista para empaquetar como
+        SaaS para distribuidoras y transmisoras chilenas, con un caso
+        de uso directo para el cumplimiento regulatorio post-Frente
+        Valparaiso 2026.
+\end{itemize}
+
+\subsection{Organizacion del documento}
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Capitulo 2}: marco teorico (gemelos digitales en
+        sistemas electricos de potencia, conformal prediction,
+        aprendizaje federado, regulacion electrica chilena).
+  \item \textbf{Capitulo 3}: datos (CEN, gemelo digital, catalogo
+        de fallas).
+  \item \textbf{Capitulo 4}: metodologia detallada del pipeline.
+  \item \textbf{Capitulo 5}: resultados experimentales.
+  \item \textbf{Capitulo 6}: discusion.
+  \item \textbf{Capitulo 7}: conclusiones y trabajo futuro.
+\end{itemize}
+
+El notebook y el dashboard asociados a este trabajo se entregan como
+material complementario.

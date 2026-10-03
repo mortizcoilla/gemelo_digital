@@ -1,0 +1,4 @@
+Detector,FPR [%],TPR [%],F1 [%],AUC,Privacidad
+Estatico 3-sigma,12.82,36.76,42.09,0.639,no
+AE-LSTM centralizado,4.91,76.34,80.00,0.878,no (datos centralizados)
+AE-LSTM federado (3 SEs),4.98,80.54,86.69,0.906,si (datos en origen)

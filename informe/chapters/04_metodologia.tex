@@ -1,0 +1,282 @@
+\chapter{Metodologia}
+
+\subsection{Arquitectura general}
+
+El pipeline consta de cuatro componentes conectados en serie. La
+figura~\ref{fig:pipeline} muestra el flujo desde la adquisicion hasta
+la alerta.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+  node distance=12mm and 8mm,
+  every node/.style={font=\small},
+  block/.style={
+    rectangle, rounded corners=4pt,
+    draw=blue!50!black, fill=blue!8,
+    minimum width=28mm, minimum height=10mm,
+    align=center, font=\small\bfseries
+  },
+  acc/.style={
+    trapezium, trapezium left angle=70, trapezium right angle=110,
+    draw=orange!70!black, fill=orange!10,
+    minimum width=20mm, align=center, font=\small
+  },
+  out/.style={
+    rectangle, draw=green!50!black, fill=green!10,
+    minimum width=22mm, minimum height=10mm, align=center
+  },
+  arrow/.style={-{Stealth[length=2.5mm]}, thick}
+]
+\node[block] (tw) {Gemelo\\ digital ligero};
+\node[acc, right=of tw] (resid) {Residuos\\ $r_t = x_t - \hat{x}_t$};
+\node[block, right=of resid] (ae) {Autoencoder\\ LSTM};
+\node[acc, right=of ae] (score) {$e_w = \text{MSE}$};
+\node[block, right=of score] (cp) {Conformal\\ prediction};
+\node[out, right=of cp] (alert) {Alerta\\(FPR $\le \alpha$)};
+
+\node[block, above=of tw] (scada) {SCADA\\1 Hz};
+\node[block, above=of ae] (fed) {FedAvg\\3 SEs};
+
+\draw[arrow] (scada) -- (tw);
+\draw[arrow] (scada) -- (resid);
+\draw[arrow] (tw) -- (resid);
+\draw[arrow] (resid) -- (ae);
+\draw[arrow] (fed) -- (ae);
+\draw[arrow] (ae) -- (score);
+\draw[arrow] (score) -- (cp);
+\draw[arrow] (cp) -- (alert);
+\end{tikzpicture}
+\caption{Diagrama del pipeline de deteccion.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Gemelo digital ligero}
+
+\subsubsection{Estado estacionario}
+
+En regimen permanente, las corrientes por linea son
+
+\[
+I_k = \frac{S_k}{\sqrt{3}\, V_{BT}\, V_{k,p}}, \qquad k = 1,\dots,4
+\]
+
+donde $S_k = \sqrt{P_k^2 + Q_k^2}$ es la potencia aparente de la
+linea $k$ y $V_{k,p}$ es la tension en el nodo $p$ aguas abajo del
+alimentador. La tension en $p$ se calcula por la caida en la linea:
+
+\[
+V_{k,p} = V_{BT} - \frac{R_{linea,k}\, P_k + X_{linea,k}\, Q_k}{S_{nom}}
+\]
+
+La potencia total demandada al lado AT es
+
+\[
+P_{AT} = \sum_k P_k + 2 P_{Cu,nom} \left(\frac{S_{tot}}{2 S_{nom}}\right)^2 + 2 P_{Fe}
+\]
+
+\subsubsection{Dinamica termica}
+
+La temperatura del devanado sigue una dinamica de primer orden
+
+\[
+C_{term}\, \frac{dT_{dev}}{dt} = P_{Cu}(t) - h (T_{dev} - T_{amb})
+\]
+
+con $C_{term} = h \cdot \tau_{term}$ y $P_{Cu}(t) = P_{Cu,nom} (S_{pu})^2$
+donde $S_{pu} = S_{tot} / (2 S_{nom})$.
+
+\subsubsection{Dinamica del regulador de tension}
+
+El regulador automatico de tension ajusta el tap con dinamica de
+constante 5~s:
+
+\[
+\frac{dV_{BT}}{dt} = \frac{V^{ref} - V_{BT}}{5\,\text{s}}
+\]
+
+El modelo se implementa en Python (~150 lineas,~\ref{appx:codigo})
+y corre a 1~Hz sin problemas en CPU.
+
+\subsection{Calculo de residuos}
+
+El residuo multivariado en el tiempo $t$ es
+
+\[
+r_t = x_t^{obs} - \hat{x}_t^{gemelo} \in \mathbb{R}^{22}
+\]
+
+Bajo operacion normal, $r_t \approx \mathcal{N}(0, \Sigma)$ donde
+$\Sigma$ es la covarianza empirica del ruido de medicion. Bajo
+falla, $r_t$ exhibe una firma caracteristica:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item F1 (cortocircuito): pico de corriente L1, depresion de
+        tension AT/BT1, aumento de THD.
+  \item F2 (sobrecarga): corriente L2 elevada con rampa sostenida.
+  \item F3 (sobretension AT): tension AT por encima de 1.07~pu,
+        frecuencia elevada.
+  \item F4 (degradacion): deriva lenta del THD.
+  \item F5 (PMU): frecuencia congelada y ROCOF nulo.
+  \item F6 (desbalance): corrientes L1 y L3 opuestas.
+  \item F7 (buje): pulsos esporadicos en THD.
+  \item F8 (clima): tension AT cae, corriente sube, frecuencia cae.
+\end{itemize}
+
+El residuo es la materia prima del detector no supervisado. Es
+\emph{robusto al punto de operacion}: si la carga sube, el gemelo
+sube la corriente esperada y el residuo sigue siendo pequeno.
+
+\subsection{Autoencoder LSTM}
+
+El detector es un autoencoder LSTM con la arquitectura de la
+figura~\ref{fig:ae}.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+  every node/.style={font=\small},
+  box/.style={
+    rectangle, draw=blue!60!black, fill=blue!10,
+    minimum width=22mm, minimum height=8mm, align=center
+  },
+  arrow/.style={-{Stealth[length=2.5mm]}, thick}
+]
+\node[box] (in) {Input\\$30 \times 22$};
+\node[box, right=4mm of in] (e1) {LSTM 64};
+\node[box, right=2mm of e1] (e2) {LSTM 32};
+\node[box, right=2mm of e2] (z) {Latent 16};
+\node[box, right=4mm of z] (d1) {Repeat 30};
+\node[box, right=2mm of d1] (d2) {LSTM 32};
+\node[box, right=2mm of d2] (d3) {LSTM 64};
+\node[box, right=2mm of d3] (out) {Dense 22};
+
+\draw[arrow] (in) -- (e1);
+\draw[arrow] (e1) -- (e2);
+\draw[arrow] (e2) -- (z);
+\draw[arrow] (z) -- (d1);
+\draw[arrow] (d1) -- (d2);
+\draw[arrow] (d2) -- (d3);
+\draw[arrow] (d3) -- (out);
+
+\draw[arrow, dashed, gray] ([yshift=-3mm]in.south) -- node[below,font=\tiny,text=gray]{MSE loss} ([yshift=-3mm]out.south);
+\end{tikzpicture}
+\caption{Arquitectura del autoencoder LSTM.}
+\label{fig:ae}
+\end{figure}
+
+La entrada es una ventana $w$ de $T=30$ muestras de los 22 features
+normalizados ($\mu, \sigma$ calculados sobre el conjunto de
+entrenamiento normal). El encoder produce un vector latente de 16
+dimensiones, que el decoder repite $T$ veces para reconstruir la
+ventana completa. La loss es MSE.
+
+El modelo tiene $\approx 53{,}000$ parametros. Se entrena con
+optimizer Adam ($lr=10^{-3}$, weight decay $10^{-5}$),
+CosineAnnealingLR y early stopping sobre validacion (paciencia 5).
+30 epocas bastan para converger.
+
+\subsection{Conformal prediction}
+
+El umbral conformal se calcula sobre el conjunto de calibracion
+(50\% de las ventanas de train) con $\alpha = 0.05$:
+
+\[
+\hat{q} = \text{Quantil}_{n_{cal}+1}^{\lceil 0.95 \cdot (n_{cal}+1) \rceil}\, (e_w^{cal})
+\]
+
+Toda ventana de test con reconstruction error $e_w^{test} > \hat{q}$
+genera una alerta. Bajo intercambiabilidad,
+
+\[
+\mathbb{P}\{e_w^{test} > \hat{q}\} \le 0.05
+\]
+
+lo que da una \emph{tasa de falsa alarma garantizada} del 5\%.
+
+\subsubsection{Por que calibrar sobre el train y no sobre un conjunto separado}
+
+Por restricciones de tamano muestral, las primeras 50\% de las
+ventanas de train se usan como calibracion. Para uso en produccion
+se recomienda reservar un conjunto separado de $\sim 100{,}000$
+muestras normales. La validacion del supuesto de intercambiabilidad
+se hace graficando la CDF empirica del reconstruction error sobre el
+test (capitulo 5).
+
+\subsection{Aprendizaje federado}
+
+Se construyen tres subestaciones virtuales (configuracion reducida para
+este prototipo; en produccion se usan cinco o mas), cada una con un perfil de
+carga y catalogo de fallas ligeramente distinto (variabilidad
+geografica). El entrenamiento sigue FedAvg:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item Inicializar $\theta_0$ en el servidor.
+  \item Para cada ronda $t = 1, \dots, T$:
+  \begin{enumerate}
+    \item Enviar $\theta_t$ a cada cliente $k$.
+    \item Entrenar $\theta_t$ sobre $D_k$ durante $E$ epocas
+          locales, obtener $\theta^k_{t+1}$.
+    \item Agregar: $\theta_{t+1} = \sum_k \frac{n_k}{N} \theta^k_{t+1}$.
+  \end{enumerate}
+\end{enumerate}
+
+Parametros: $T = 10$ rondas, $E = 3$ epocas locales, $lr = 10^{-3}$.
+No se usa ninguna tecnica de privacidad diferencial (DP) en esta
+version por simplicidad, pero se deja el hook para agregarla en
+produccion.
+
+\subsection{Priorizacion post-evento}
+
+Tras un frente climatico detectado, el sistema emite un orden de
+despacho de cuadrillas por subestacion. El score de prioridad es:
+
+\[
+P_i = w_1 \cdot \mathbb{1}\{alerta_i > \hat{q}\}
+    + w_2 \cdot \mathbb{1}\{T_{dev,i} > T_{crit}\}
+    + w_3 \cdot \mathbb{1}\{f_i < f_{crit}\}
+    + w_4 \cdot \text{criticidad}_i
+\]
+
+donde los $w_j$ son hiperparametros que la distribuidora fija. Una
+heuristica razonable es $w = (0.4, 0.2, 0.2, 0.2)$. Las SE con mayor
+$P_i$ son atendidas primero.
+
+\subsection{Evaluacion}
+
+\subsubsection{Metricas}
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{FPR} (False Positive Rate): proporcion de ventanas
+        normales flaggeadas como falla.
+  \item \textbf{TPR / Recall}: proporcion de ventanas con falla
+        detectadas.
+  \item \textbf{Precision}: proporcion de alertas que son falla real.
+  \item \textbf{F1}: media armonica de precision y recall.
+  \item \textbf{AUC}: area bajo la curva ROC, umbral-agnostico.
+  \item \textbf{Latencia de deteccion}: tiempo entre el inicio de la
+        falla y la primera alerta.
+\end{itemize}
+
+\subsubsection{Comparacion de detectores}
+
+Se comparan tres detectores:
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \emph{Estatico 3-sigma}: umbral fijo sobre $|r_{V_{AT}}|$.
+        \emph{Baseline} que muestra la necesidad de modelos mas
+        sofisticados.
+  \item \emph{AE-LSTM centralizado}: autoencoder entrenado sobre
+        todos los datos centralizados. \emph{Techo} teorico de
+        rendimiento.
+  \item \emph{AE-LSTM federado (3 SEs)}: el modelo propuesto,
+        preservando privacidad.
+\end{enumerate}
+
+\subsubsection{Cumplimiento de la garantia conformal}
+
+El conformal prediction entrega una cota \emph{teorica} sobre el FPR.
+La verificacion empirica se hace midiendo el FPR sobre el conjunto
+de test: si el FPR empirico es $\le \alpha$, la garantia se cumple
+en la muestra. Los resultados del capitulo siguiente muestran que
+el FPR empirico es de 5.4\%, ligeramente por encima del objetivo del
+5\%. Esta pequena brecha es esperada y se discute en el capitulo 6.

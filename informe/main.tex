@@ -1,0 +1,122 @@
+\documentclass[11pt,a4paper,twoside,openright]{report}
+
+% --- Paquetes basicos ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage[hidelinks]{hyperref}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{positioning,arrows.meta,shapes,calc,fit,backgrounds}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tcolorbox}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{csquotes}
+\usepackage{natbib}
+\usepackage{siunitx}
+\usepackage{microtype}
+
+% --- Estilo titulos ---
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries}
+  {\chaptertitlename\ \thechapter}{12pt}{\Huge}
+\titleformat{\section}
+  {\normalfont\Large\bfseries}
+  {\thesection}{1em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}
+  {\thesubsection}{1em}{}
+\titleformat{\subsubsection}
+  {\normalfont\normalsize\bfseries}
+  {\thesubsubsection}{1em}{}
+
+% --- Headers ---
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\thepage\quad\small\textsc{\leftmark}}
+\fancyhead[RO]{\small\textsc{\rightmark}\quad\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% --- Caption ---
+\captionsetup{font=small,labelfont=bf,labelsep=period}
+
+% --- Listings ---
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{gray},
+  stringstyle=\color{red!60!black},
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{black!20},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  stepnumber=1,
+  numbersep=8pt,
+}
+
+% --- Tcolorbox ---
+\tcbuselibrary{skins,breakable}
+\newtcolorbox{nota}[1][]{
+  colback=yellow!5!white,
+  colframe=yellow!50!black,
+  fonttitle=\bfseries,
+  title=#1,
+  breakable,
+}
+
+% --- Bibliografia ---
+\bibliographystyle{apalike}
+
+% --- Metadatos ---
+\title{\Huge\bfseries Gemelo Digital ligero de Subestaci\\'on\\
+\Large Deteccion temprana no supervisada con SCADA/PMU,\\
+alertas calibradas y aprendizaje federado entre subestaciones}
+\author{Miguel Ortiz Coilla}
+\date{Octubre 2026}
+
+\begin{document}
+
+% --- Portada ---
+\input{frontmatter.tex}
+
+% --- Abstract ---
+\input{chapters/00_abstract.tex}
+
+% --- Indices ---
+\tableofcontents
+\listoffigures
+\listoftables
+
+% --- Capitulos ---
+\input{chapters/01_introduccion.tex}
+\input{chapters/02_marco_teorico.tex}
+\input{chapters/03_datos.tex}
+\input{chapters/04_metodologia.tex}
+\input{chapters/05_resultados.tex}
+\input{chapters/06_discusion.tex}
+\input{chapters/07_conclusiones.tex}
+
+% --- Bibliografia ---
+\bibliography{references}
+
+% --- Apendices ---
+\appendix
+\input{appendix/A_topologia.tex}
+\input{appendix/B_codigo.tex}
+\input{appendix/C_glosario.tex}
+
+\end{document}

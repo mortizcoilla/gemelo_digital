@@ -1,0 +1,180 @@
+\chapter{Marco teorico}
+
+\subsection{Gemelos digitales en sistemas electricos de potencia}
+
+Un gemelo digital es una representacion computacional sincronizada con un
+activo fisico que permite reproducir su comportamiento en tiempo real y
+explorar escenarios hipoteticos~\citep{Tao2018,TwinPower2020}. En sistemas
+electricos de potencia, los gemelos digitales aparecieron primero en
+transmision para estudios de flujos de potencia y estabilidad transitoria;
+mas recientemente la literatura se ha enfocado en subestaciones de
+distribucion~\citep{DT-Substation-2022} y en plantas renovables.
+
+Desde el punto de vista formal, un gemelo digital para una subestacion
+puede verse como un mapeo
+
+\[
+\mathcal{T}: (\theta, u_t) \mapsto \hat{x}_t
+\]
+
+donde $\theta$ son los parametros de la subestacion (topologia, parametros
+de transformadores y lineas), $u_t$ son las consignas operativas (tap,
+referencia de tension, despacho) y $\hat{x}_t$ es la prediccion del estado
+electrico esperado al tiempo $t$. La funcion $\mathcal{T}$ se obtiene
+combinando modelos de estado estacionario (flujo de potencia), modelos
+dinamicos (swing de orden reducido) y modelos termicos (primer orden con
+constante de tiempo de 60-90~min).
+
+En este trabajo se adopta un gemelo digital \emph{ligero} (modelo de bajo
+orden, sin componentes de alta frecuencia) por tres motivos:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Reducir el costo de calibracion}. Un gemelo detallado
+        (incluyendo armonicos de conmutacion, modelos de bujes y
+        modelos termicos distribuidos) requiere meses de datos
+        historicos para identificar parametros, mientras que un gemelo
+        ligero se identifica con la hoja de datos del fabricante y
+        unas pocas semanas de operacion normal.
+
+  \item \textbf{Generar datos sinteticos}. El gemelo ligero es
+        suficientemente rico para que las firmas de los ocho tipos de
+        falla modelados en el capitulo 3 sean distinguibles en los
+        residuos.
+
+  \item \textbf{Computo en linea}. La prediccion del gemelo se ejecuta
+        a cadencia SCADA (1~s), lo que exige un modelo con pocos
+        parametros y baja latencia.
+\end{enumerate}
+
+\subsection{Conformal prediction}
+
+La \emph{conformal prediction}~\citep{Vovk2005,Shafer2008} es un marco
+para construir regiones de prediccion con garantia de cobertura bajo
+el supuesto debil de intercambiabilidad (no exige distribucion
+conhecida). En el contexto de deteccion de anomalias, se aplica como
+sigue.
+
+Sea $e_1, \dots, e_n$ una secuencia de reconstruction errors producida
+por el autoencoder sobre datos de calibracion. Bajo intercambiabilidad,
+la fraccion de datos de test con reconstruction error por encima del
+cuantil empirico $q_{1-\alpha} = \text{Quantil}_{n+1}^{\lceil (1-\alpha)(n+1) \rceil}$
+es a lo mas $\alpha$. Es decir,
+
+\[
+\mathbb{P}\{e_{n+1} > q_{1-\alpha}\} \le \alpha.
+\]
+
+Esta garantia es fundamental para que el sistema sea aceptado por el
+operador: las falsas alarmas no se acumular bajo cambios de regimen
+operativo, mientras que las fallas reales siguen detectandose con alta
+probabilidad.
+
+\subsubsection{Por que conformal y no solo un umbral 3-sigma}
+
+Un umbral 3-sigma asume gaussianidad, lo que es violado en la practica
+por los picos de carga, los cambios de tap y los eventos climaticos.
+La consecuencia es una tasa de falsa alarma muy superior al objetivo
+(el detector 3-sigma empirico del capitulo 5 alcanza un FPR de 13.2\%).
+Conformal entrega una garantia libre de distribucion y, en este
+trabajo, se demuestra empiricamente que cumple el objetivo.
+
+\subsection{Aprendizaje federado}
+
+El aprendizaje federado~\citep{McMahan2017} entrena un modelo compartido
+entre multiples clientes sin mover los datos crudos. FedAvg, el
+algoritmo mas usado, realiza los siguientes pasos en cada ronda $t$:
+\enumerate{
+  \item El servidor envia el modelo global $\theta_t$ a cada cliente $k$.
+  \item Cada cliente entrena $\theta_t$ sobre sus datos locales $D_k$
+        durante $E$ epocas, obteniendo $\theta^k_{t+1}$.
+  \item El servidor agrega los modelos locales:
+
+\[
+\theta_{t+1} = \sum_{k=1}^{K} \frac{n_k}{N} \theta^k_{t+1}
+\]
+}
+donde $n_k = |D_k|$ y $N = \sum_k n_k$.
+
+En este caso la federacion FedAvg entre tres subestaciones (prototipo;
+en produccion se usan cinco o mas) tiene dos
+beneficios:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Estadistica}: el modelo global ve la variabilidad
+        geografica (perfiles de carga, clima, mix de clientes) que
+        ninguna SE ve por si sola.
+  \item \textbf{Cumplimiento}: los datos nunca abandonan la SE, lo
+        que cumple con la guia de la SEC para redes OT y con NERC
+        CIP (que las distribuidoras chilenas usan como benchmark
+        internacional).
+\end{itemize}
+
+\subsubsection{Limitaciones}
+
+FedAvg asume clientes \emph{iid}. En distribucion, las SE tienen
+heterogeneidad fuerte (urbana vs rural, climatica, mix de clientes).
+Esto degrada la convergencia. En este trabajo se aborda parcialmente
+reduciendo el numero de rondas locales y monitoreando el gap contra
+el modelo centralizado (capitulo 5).
+
+\subsection{Regulacion electrica chilena y los cargos SEC/SERNAC}
+
+La regulacion electrica chilena se estructura en torno a:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{CEN} (Coordinador Electrico Nacional): opera el SEN,
+        coordina despacho y publica medidas de calidad.
+  \item \textbf{CNE} (Comision Nacional de Energia): regula normas
+        tecnicas y tarifarias.
+  \item \textbf{SEC} (Superintendencia de Electricidad y Combustibles):
+        fiscaliza cumplimiento de calidad, seguridad y normativa
+        tecnica. Emite cargos directos por incumplimiento.
+  \item \textbf{SERNAC}: protege derechos del consumidor. Coordina
+        con la SEC los casos de reposicion tardia o dano a usuarios.
+\end{itemize}
+
+Los indicadores \emph{SAIDI} (System Average Interruption Duration
+Index) y \emph{SAIFI} (System Average Interruption Frequency Index)
+son los principales metricas de calidad. La regulacion del NTIC
+(Norma Tecnica de Calidad de Servicio) fija valores maximos por zona
+y compensacion automatica a clientes en caso de superarlos.
+
+Tras el frente de Valparaiso (julio 2026), la SEC y el SERNAC
+comenzaron a emitir cargos y procedimientos contra Chilquinta y otras
+concesionarias por \emph{reposicion tardia}. El plazo maximo de
+reposicion en zona urbana es 8~h; en zona rural 24~h. Cualquier
+sistema que ayude a reducir el tiempo medio de reposicion reduce
+directamente la exposicion regulatoria.
+
+\subsection{Trabajo relacionado}
+
+\subsubsection{Detectores no supervisados en subestaciones}
+
+La mayoria de la literatura usa \emph{autoencoders variacionales} (VAE)
+o \emph{normalizing flows} sobre los datos crudos SCADA~\citep{AE-IEA-2021}.
+El aporte de este trabajo es que el residuo sobre el gemelo digital es
+\emph{mas robusto al punto de operacion} que la senal cruda, porque
+los cambios legitimos de consigna son predichos por el gemelo y se
+cancelan en el residuo.
+
+\subsubsection{Conformal prediction para series de tiempo}
+
+La \emph{conformal prediction adaptativa}~\citep{ACI-2020} actualiza
+los cuantiles con una ventana deslizante. En este trabajo se usa la
+version estatica (cuantil fijo sobre calibracion inicial) por
+simplicidad y reproducibilidad, dejando la version adaptativa como
+trabajo futuro.
+
+\subsubsection{Aprendizaje federado en sistemas electricos}
+
+La literatura es aun escasa. \citet{FedGrid-2022} propone FedAvg
+para deteccion de robo de energia en smart meters. Este trabajo
+extiende el enfoque a subestaciones, donde la dimensionalidad y la
+criticidad de las fallas es muy distinta.
+
+\subsection{Sintesis}
+
+El marco teorico presentado cubre los cuatro pilares tecnologicos del
+trabajo (gemelo digital, conformal prediction, federated learning) y los
+fundamentos regulatorios que dan sentido economico al producto. El
+capitulo siguiente presenta los datos concretos sobre los que se
+valida el pipeline.

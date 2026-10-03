@@ -1,0 +1,153 @@
+\chapter{Codigo relevante}
+\label{appx:codigo}
+
+\section{Clase Subestacion}
+
+\begin{lstlisting}[language=Python]
+from dataclasses import dataclass, field
+from typing import List
+
+@dataclass
+class Subestacion:
+    S_nom_MVA: float = 30.0
+    V_at_kV: float = 110.0
+    V_bt_kV: float = 23.0
+    X_pu: float = 0.12
+    R_pu: float = 0.005
+    P_fe_kW: float = 35.0
+    P_cu_kW_nom: float = 180.0
+    tau_termico_min: float = 90.0
+
+    n_lineas: int = 4
+    R_linea_pu: List[float] = field(default_factory=lambda: [0.04, 0.06, 0.05, 0.07])
+    X_linea_pu: List[float] = field(default_factory=lambda: [0.08, 0.10, 0.09, 0.11])
+
+    V_min_pu: float = 0.93
+    V_max_pu: float = 1.07
+    I_max_A: float = 800.0
+    f_min_Hz: float = 49.5
+    f_max_Hz: float = 50.5
+    T_max_dev_C: float = 95.0
+
+    P_nom_MW: List[float] = field(default_factory=lambda: [6.0, 4.5, 5.0, 3.5])
+    Q_nom_MVAR: List[float] = field(default_factory=lambda: [1.5, 1.2, 1.3, 0.9])
+\end{lstlisting}
+
+\section{Clase GemeloDigital}
+
+\begin{lstlisting}[language=Python]
+class GemeloDigital:
+    def __init__(self, se: Subestacion, dt_s: float = 1.0):
+        self.se = se
+        self.dt = dt_s
+        self.V_at = 1.0
+        self.V_bt = 1.0
+        self.f = 50.0
+        self.omega = 1.0
+        self.T_dev = 25.0
+        self.tap = 0.0
+
+    def paso_estado_estacionario(
+        self, P_carga_MW: np.ndarray,
+        Q_carga_MVAR: np.ndarray,
+        V_ref_pu: float = 1.0,
+    ) -> Dict[str, float]:
+        V_bt = np.clip(V_ref_pu + 0.02 * self.tap,
+                        self.se.V_min_pu, self.se.V_max_pu)
+        I = np.zeros(self.se.n_lineas)
+        for k in range(self.se.n_lineas):
+            V_k = V_bt - (self.se.R_linea_pu[k] * P_carga_MW[k]
+                          + self.se.X_linea_pu[k] * Q_carga_MVAR[k]) \
+                       / max(self.se.S_nom_MVA, 1e-3)
+            V_k = max(V_k, 0.7)
+            S_k = math.sqrt(P_carga_MW[k]**2 + Q_carga_MVAR[k]**2)
+            I[k] = S_k * 1e3 / (math.sqrt(3) * self.se.V_bt_kV * V_k)
+        P_total = P_carga_MW.sum()
+        Q_total = Q_carga_MVAR.sum()
+        S_total = math.sqrt(P_total**2 + Q_total**2)
+        P_cu = 2 * self.se.P_cu_kW_nom * (S_total / (2 * self.se.S_nom_MVA))**2 / 1e3
+        P_fe = 2 * self.se.P_fe_kW / 1e3
+        P_at = P_total + P_cu + P_fe
+        f = 50.0 - 0.005 * max(0.0, P_at - 25.0)
+        f = float(np.clip(f, 49.0, 51.0))
+        return {
+            'V_at_pu': 1.0,
+            'V_bt_pu': float(V_bt),
+            'f_Hz': f,
+            'I_linea_A': I,
+            'P_total_MW': float(P_total),
+            'Q_total_MVAR': float(Q_total),
+            'P_cu_MW': float(P_cu),
+            'P_fe_MW': float(P_fe),
+            'S_total_MVA': float(S_total),
+        }
+\end{lstlisting}
+
+\section{Clase LSTMAutoencoder}
+
+\begin{lstlisting}[language=Python]
+import torch
+import torch.nn as nn
+
+class LSTMAutoencoder(nn.Module):
+    def __init__(self, n_features: int, latent_dim: int = 16,
+                 hidden: int = 64, window: int = 30):
+        super().__init__()
+        self.window = window
+        self.encoder = nn.LSTM(n_features, hidden, num_layers=2,
+                                batch_first=True, dropout=0.1)
+        self.bottleneck = nn.Linear(hidden, latent_dim)
+        self.decoder = nn.LSTM(latent_dim, hidden, num_layers=2,
+                                batch_first=True, dropout=0.1)
+        self.out = nn.Linear(hidden, n_features)
+
+    def forward(self, x):
+        h, _ = self.encoder(x)
+        z = self.bottleneck(h[:, -1, :])
+        z_rep = z.unsqueeze(1).repeat(1, self.window, 1)
+        d, _ = self.decoder(z_rep)
+        return self.out(d)
+\end{lstlisting}
+
+\section{Conformal prediction}
+
+\begin{lstlisting}[language=Python]
+ALPHA = 0.05
+
+err_train = ((Xw_n_train - model(Xw_n_train).numpy()) ** 2).mean(axis=(1, 2))
+q_hat = np.quantile(err_train, 1 - ALPHA)
+
+def predecir_alerta(sample):
+    err = ((sample - model(sample).numpy()) ** 2).mean()
+    return err > q_hat
+\end{lstlisting}
+
+\section{FedAvg}
+
+\begin{lstlisting}[language=Python]
+def fedavg(states, pesos):
+    total = sum(pesos)
+    avg = {k: torch.zeros_like(v) for k, v in states[0].items()}
+    for s, p in zip(states, pesos):
+        for k in avg:
+            avg[k] += s[k] * (p / total)
+    return avg
+\end{lstlisting}
+
+\section{Catalogo de fallas}
+
+\begin{lstlisting}[language=Python]
+CATALOGO_FALLAS = {
+    'F1_corto_mono':  {'severidad': 0.85, 'duracion_s': (0.1, 2.0)},
+    'F2_sobrecarga':   {'severidad': 0.45, 'duracion_s': (60, 600)},
+    'F3_sobret_AT':    {'severidad': 0.90, 'duracion_s': (0.5, 5.0)},
+    'F4_degrad_aisl':  {'severidad': 0.30, 'duracion_s': (1800, 7200)},
+    'F5_perd_com_PMU': {'severidad': 0.50, 'duracion_s': (10, 600)},
+    'F6_desbalance':   {'severidad': 0.35, 'duracion_s': (300, 3600)},
+    'F7_falla_buje':   {'severidad': 0.25, 'duracion_s': (3600, 14400)},
+    'F8_evento_clima': {'severidad': 0.70, 'duracion_s': (600, 14400)},
+}
+\end{lstlisting}
+
+El codigo completo (notebook ejecutable y dashboard) se entrega como
+material complementario en el repositorio del proyecto.

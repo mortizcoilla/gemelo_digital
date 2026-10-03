@@ -1,0 +1,217 @@
+\chapter{Discusion}
+
+\subsection{El gemelo digital como habilitador de datos etiquetados}
+
+El problema del cold-start en deteccion de fallas es uno de los mas
+subestimados en la literatura. La mayoria de los papers proponen
+modelos sofisticados (transformers, normalizing flows) pero no
+explican como entrenar el primer modelo sin etiquetas. Este trabajo
+muestra que un gemelo digital \emph{ligero} ya entrega senales utiles:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item Los residuos del gemelo tienen una distribucion bien
+        comportada bajo operacion normal.
+  \item Las fallas inyectadas producen firmas distinguibles.
+  \item El autoencoder LSTM aprende la dinamica normal de los
+        residuos con pocas epocas.
+\end{itemize}
+
+El gemelo ligero es calibrable con la hoja de datos del fabricante
+y unas pocas semanas de operacion real. Esto reduce drasticamente el
+tiempo de despliegue de un sistema como el propuesto.
+
+\subsubsection{Limitaciones del gemelo ligero}
+
+El gemelo ligero no captura:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item Armonicos de conmutacion.
+  \item Modelos termicos distribuidos (punto caliente en el
+        devanado).
+  \item Comportamiento dinamico del transformador bajo falla
+        (modelos de Jiles-Atherton para el nucleo).
+  \item Interacciones con la red aguas arriba (modelos de estabilidad
+        transitoria).
+\end{itemize}
+
+Estos fenomenos son relevantes para fallas raras pero graves (falla
+interna de transformador, resonance sub-sincrona). El gemelo deberia
+extenderse a un modelo \emph{medio} antes del despliegue
+productivo, posiblemente incluyendo FEM del transformador y un
+modelo de Thevenin equivalente para la red aguas arriba.
+
+\subsection{Por que conformal y no solo un umbral fijo}
+
+El conformal prediction aporta tres beneficios sobre un umbral fijo
+(como 3-sigma):
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Garantia libre de distribucion}. El detector 3-sigma
+        asume gaussianidad, que se viola en regimenes operativos
+        extremos. El detector conformal no hace ese supuesto.
+
+  \item \textbf{Confianza del operador}. Cuando el sistema afirma que
+        la probabilidad de falsa alarma es $\le 5\%$, esa afirmacion
+        es valida bajo el supuesto de intercambiabilidad, lo que el
+        operador puede auditar.
+
+  \item \textbf{Cumplimiento}. La garantia conformal es
+        directamente traducible a un compromiso contractual con la
+        distribuidora (\emph{el sistema no generara mas de X alertas
+        espurias por mes}).
+\end{enumerate}
+
+\subsubsection{Limitaciones}
+
+El conformal prediction tiene dos limitaciones en este contexto:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item Requiere un \emph{conjunto de calibracion} separado del
+        entrenamiento. Esto puede ser dificil en subestaciones nuevas.
+
+  \item La garantia se debilita bajo \emph{distribution shift}: si la
+        politica operativa de la distribuidora se vuelve mas
+        conservadora (cambios de tap mas frecuentes, por ejemplo), el
+        cuantil conformal puede subestimar el FPR.
+\end{itemize}
+
+La primera limitacion se mitiga usando los primeros 30 dias de
+operacion como calibracion. La segunda se mitiga con \emph{conformal
+adaptativo}~\citep{ACI-2020}, que actualiza el cuantil con una ventana
+deslizante.
+
+\subsection{El costo de la privacidad}
+
+El aprendizaje federado suele tener un costo en precision. En este
+trabajo no aparecio: el modelo federado midio \emph{mejor} que el
+centralizado (F1 $0.87$ vs $0.80$; AUC $0.906$ vs $0.878$). La
+lectura honesta es que la comparacion no es de presupuesto igual
+-- el centralizado entrena 6 epocas sobre una sola SE, el federado
+agrega estadistica de 3 SEs -- y que el resultado relevante es la
+\textbf{equivalencia}: federar no cede detectabilidad a cambio de:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item No consolidar datos en la nube.
+  \item Cumplir con NERC CIP / normativa CNE sobre segregacion OT/IT.
+  \item Permitir que las distribuidoras conserven la propiedad de
+        sus datos.
+\end{itemize}
+
+Este trade-off es directamente favorable desde el punto de vista
+regulatorio y comercial. Queda abierta la pregunta de si tecnicas
+mas avanzadas (federated learning con personalizacion,
+conocimiento multi-tarea, distillation) amplian la ventaja o
+estabilizan la convergencia con clientes heterogeneos.
+
+\subsubsection{FedAvg no es la unica opcion}
+
+Alternativas que podrian explorarse:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{FedProx}: agrega un termino de regularizacion
+        proximal que estabiliza la convergencia ante datos
+        heterogeneos.
+  \item \textbf{Personalizacion}: cada SE mantiene un modelo
+        personalizado encima del modelo global. Esto permite
+        capturar fallas raras propias de una SE sin sacrificar la
+        estadistica global.
+  \item \textbf{Federated conformal}: calibrar el umbral conformal
+        localmente con datos de la SE. La garantia es solo local,
+        pero la cobertura mejora.
+\end{itemize}
+
+\subsection{Aplicabilidad regulatoria}
+
+El sistema propuesto ataca directamente tres frentes regulatorios:
+
+\subsubsection{SAIDI y compensacion automatica}
+
+Sobre las fallas agudas detectadas por el sistema en su
+configuracion completa (F1, F3, F8, F5), la literatura estima una
+reduccion de 30\% en el tiempo medio de reposicion. Aplicando al
+SAIDI medio del SEN ($\sim$12~h/ano en 2024), esto equivale a una
+reduccion de $\approx 3.6$~h/ano. Para una distribuidora con
+1.5 millones de clientes, el costo evitado es significativo.
+
+\subsubsection{Cargos SEC por incumplimiento}
+
+La trazabilidad del sistema es valiosa en si misma. Cada alerta
+tiene timestamp, score y modelo que la emitio, lo que sirve como
+evidencia ante un procedimiento SEC. El sistema reduce el riesgo
+de cargos por \emph{supervision insuficiente} (Art. 145 del
+reglamento).
+
+\subsubsection{Casos SERNAC post-evento climatico}
+
+El frente de Valparaiso (julio 2026) y los procedimientos SERNAC
+asociados crearon la necesidad de \emph{probar} que la distribuidora
+respondio oportunamente. El sistema propuesto entrega:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item Tiempo exacto de la primera deteccion.
+  \item Score de prioridad por subestacion.
+  \item Recomendacion de despacho de cuadrillas.
+\end{itemize}
+
+Esto es exactamente lo que el SERNAC exige para evaluar si la
+respuesta fue razonable.
+
+\subsection{Trabajo futuro}
+
+\subsubsection{Validacion con datos reales}
+
+El paso siguiente es validar con datos reales de una distribuidora.
+Las conversaciones preliminares con Chilquinta (Valparaiso) y
+Engie Transelec estan en curso. La validacion debe responder:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item Cuanto reduce el sistema el SAIDI en operacion real?
+  \item Cual es el FPR real durante eventos climaticos extremos?
+  \item Cual es la adhesion de los operadores al sistema?
+\end{itemize}
+
+\subsubsection{Conformal adaptativo}
+
+Implementar \emph{adaptive conformal inference} (ACI) para que el
+umbral se actualice con ventanas de 1~h, manteniendo la garantia
+bajo distribution shift.
+
+\subsubsection{Deteccion de fallas combinadas}
+
+El catalogo de fallas incluye fallas aisladas. Las fallas reales
+son a menudo \emph{combinadas} (cortocircuito que induce una
+sobretension transitoria, por ejemplo). El modelo deberia entrenarse
+con fallas multi-evento.
+
+\subsubsection{Gemelo digital mejorado}
+
+Extender el gemelo a un modelo de orden medio: FEM del
+transformador, modelo de la red aguas arriba, modelos termicos
+distribuidos. Esto mejora la fidelidad pero aumenta el costo de
+calibracion.
+
+\subsubsection{SaaS vendible}
+
+Empaquetar el pipeline como un SaaS con:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item Dashboard web por subestacion (este trabajo es el prototipo).
+  \item API REST para integracion con SCADA.
+  \item Modelo de precios por subestacion y por alerta.
+  \item SLA de disponibilidad del 99.9\%.
+\end{itemize}
+
+El mercado objetivo son las distribuidoras (Chilquinta, CGE,
+Saesa, Enel Distribucion) y las transmisoras (Engie Transelec,
+Colbun Transelec). El precio de referencia por subestacion
+monitorizada seria $\approx$ USD 200-500/mes, con un mercado
+direccionable de $\sim 600$ subestaciones en el SEN.
+
+\subsection{Sintesis}
+
+El sistema propuesto es una contribucion metodologica concreta al
+campo de deteccion temprana en subestaciones de distribucion. Su
+aporte principal es demostrar que un pipeline federado + gemelo
+digital + conformal prediction puede cumplir el triple requisito
+de: alta sensibilidad, garantia de falsa alarma, y privacidad de
+los datos. Los resultados empiricos son alentadores, aunque
+queda trabajo pendiente en la calibracion con datos reales y en
+la extension del gemelo a un modelo de orden medio.

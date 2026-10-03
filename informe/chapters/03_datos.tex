@@ -1,0 +1,163 @@
+\chapter{Datos}
+
+\subsection{Fuentes de datos}
+
+El pipeline se entrena y evalua con tres tipos de datos:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Sinteticos generados por el gemelo}: constituyen el grueso
+        de la evaluacion. Permiten controlar el catalogo de fallas y
+        variar condiciones operativas (perfil de carga, clima, mix de
+        clientes) sin riesgo.
+  \item \textbf{Publicos del CEN}: medidas de frecuencia y tension del
+        SEN, usadas como sanity check de la dinamica de fondo del gemelo.
+  \item \textbf{Reales (futuro)}: a traves de alianza con Chilquinta o
+        Engie, ya iniciadas conversaciones preliminares. No se usan en
+        este trabajo por restricciones de confidencialidad.
+\end{itemize}
+
+\subsection{Gemelo digital: parametros}
+
+La subestacion gemela es de distribucion 110/23~kV con dos
+transformadores de 30~MVA en paralelo y cuatro alimentadores de
+23~kV. Los parametros del modelo se resumen en la
+tabla~\ref{tab:parametros}.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Parametros de la subestacion gemela.}
+\label{tab:parametros}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Parametro} & \textbf{Valor} & \textbf{Unidad} \\
+\midrule
+$S_{nom}$ por trafo & 30 & MVA \\
+$V_{AT}$ / $V_{BT}$ & 110 / 23 & kV \\
+$X_{cc}$ por trafo & 0.12 & pu \\
+$P_{Cu,nom}$ & 180 & kW \\
+$P_{Fe}$ & 35 & kW \\
+$\tau_{termico}$ & 90 & min \\
+$V_{min}$ / $V_{max}$ & 0.93 / 1.07 & pu \\
+$f_{min}$ / $f_{max}$ & 49.5 / 50.5 & Hz \\
+$P_{nom}$ por linea (L1..L4) & 6.0, 4.5, 5.0, 3.5 & MW \\
+$R_{linea}$ (L1..L4) & 0.04, 0.06, 0.05, 0.07 & pu \\
+$X_{linea}$ (L1..L4) & 0.08, 0.10, 0.09, 0.11 & pu \\
+$T_{max,dev}$ & 65 & \si{\degree}C} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Catalogo de fallas}
+
+El catalogo incluye ocho tipos de falla representativos del SEN
+chileno segun statistic de SEC (2024) y experiencia de
+distribuidoras~\citep{SEC-Estadisticas-2024}. Las fallas agudas
+(F1-F3) tienen distribucion de Poisson; las lentas (F4, F6, F7)
+distribucion Weibull; las climaticas (F8) Poisson anual.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Catalogo de fallas sinteticas.}
+\label{tab:catalogofallas}
+\begin{tabular}{lccr}
+\toprule
+\textbf{Codigo} & \textbf{Tipo} & \textbf{Severidad} & $\lambda$ / dia \\
+\midrule
+F1 & Cortocircuito monofasico L1   & 0.85 & 0.50 \\
+F2 & Sobrecarga sostenida L2       & 0.45 & 0.30 \\
+F3 & Sobretension AT               & 0.90 & 0.10 \\
+F4 & Degradacion de aislamiento    & 0.30 & 0.40 \\
+F5 & Perdida de comunicacion PMU   & 0.50 & 0.35 \\
+F6 & Desbalance de cargas          & 0.35 & 0.60 \\
+F7 & Falla incipiente de buje      & 0.25 & 0.20 \\
+F8 & Evento climatico extremo      & 0.70 & $5/365$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Perfil de carga y clima}
+
+El perfil de carga horario modelado corresponde a una distribuidora
+chilena tipica: valle en la madrugada (02:00-05:00), pico en la noche
+(19:00-22:00) por consumo residencial, y un pico de mediodia mas
+suave por consumo comercial. La formula utilizada es:
+
+\[
+f(t) = 0.55 + 0.30\, e^{-\frac{(h - 20)^2}{8}} + 0.15\, e^{-\frac{(h - 12)^2}{4.5}}
+\]
+
+mas ruido gaussiano $\mathcal{N}(0, 0.04)$ para la variabilidad
+intra-hora. El perfil es valido para una SE urbana mixta
+(residencial + comercial ligero); las SE rurales tienen un pico
+agricola al amanecer y al atardecer que no se modela aqui pero
+puede agregarse parametrizando la curva.
+
+El clima extremo (F8) se modela como un frente que produce una
+caida simultanea de tension AT ($V_{AT} - 0.06 \cdot sev$), una
+desviacion de frecuencia ($-0.12 \cdot sev$~Hz) y un aumento
+sostenido de corriente en todos los alimentadores (las cargas
+intentan compensar la caida de tension).
+
+\subsection{Cadencia y dimensionalidad}
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{SCADA} a 1~Hz: 5 tensiones, 4 corrientes, 2 potencias,
+        2 temperaturas, THD V/I, angulos.
+  \item \textbf{PMU} a 20~Hz: tension AT, corriente AT, frecuencia,
+        ROCOF.
+  \item En este trabajo se usan solo las observaciones a 1~Hz para
+        simplicidad; el pipeline escala trivialmente a 20~Hz agregando
+        capas de downsample.
+\end{itemize}
+
+El vector de observaciones por instante es de 22 features. Las
+ventanas del autoencoder LSTM son de 30 muestras (30~s), lo que da
+un tensor de entrada de $30 \times 22$.
+
+\subsection{Conjuntos de entrenamiento, validacion y test}
+
+Se simulan 7 dias ($\approx 604{,}800$ muestras) y se particionan:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item Train: primeras 6 muestras (70\%); de este subconjunto,
+        \emph{solo} las ventanas sin falla se usan para entrenar el
+        autoencoder.
+  \item Validacion: 15\% siguientes, para early stopping y calibracion
+        conformal.
+  \item Test: 15\% finales, para evaluar metricas.
+\end{itemize}
+
+La particion se hace al nivel de ventana y es estratificada por
+etiqueta de falla para mantener la proporcion de positivos.
+
+\subsection{Sanidad de los datos sinteticos}
+
+Para verificar que el gemelo produce dinamica realista, se compararon
+las estadisticas de los residuos en regimen normal contra una muestra
+de medidas de frecuencia del CEN (Coordinador Electrico Nacional,
+datos publicos). El match es razonablemente bueno:
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Comparacion de dinamica de fondo: gemelo vs CEN.}
+\label{tab:cenmatch}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Estadistica} & \textbf{Gemelo} & \textbf{CEN (real)} \\
+\midrule
+$\mu(f)$   & 50.00 Hz  & 50.02 Hz \\
+$\sigma(f)$ & 0.045 Hz & 0.062 Hz \\
+$\mu(ROCOF)$ & 0.00 Hz/s & $-0.001$ Hz/s \\
+$\sigma(ROCOF)$ & 0.020 Hz/s & 0.025 Hz/s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Las pequenas diferencias son consistentes con la hipotesis de que el
+gemelo es un modelo de bajo orden. Para uso en produccion, el gemelo
+se recalibra con los primeros 30 dias de operacion de la SE real
+usando un estimador de maxima verosimilitud sobre los parametros
+sensibles ($R$, $X$, $P_{cu}$).

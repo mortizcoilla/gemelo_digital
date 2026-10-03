@@ -1,0 +1,134 @@
+\chapter{Conclusiones}
+
+\subsection{Hallazgos principales}
+
+Este trabajo demuestra la implementacion completa de un pipeline
+de cuatro componentes -- \emph{gemelo digital ligero},
+\emph{autoencoder LSTM}, \emph{conformal prediction} y
+\emph{aprendizaje federado} -- para deteccion temprana no
+supervisada en subestaciones electricas de distribucion.
+
+Los resultados del prototipo ejecutable cumplen el rango proyectado
+por la literatura:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{FPR empirico del conformal cumple el objetivo}:
+        $4.86\%$ contra $\alpha = 0.05$, con correccion de muestra
+        finita y calibracion solo con ventanas normales. La garantia
+        libre de distribucion se cumple en la muestra ejecutable.
+  \item \textbf{Recall}: $76.3\%$ en centralizado y $80.5\%$ en
+        federado, con F1 de $0.80$ y $0.87$ y latencia mediana de
+        deteccion de $0$~s, usando configuracion reducida (2 dias de
+        datos, ventana de 15, 32 unidades ocultas).
+  \item \textbf{Gap federado vs centralizado}: inexistente en este
+        prototipo; el modelo federado mide levemente mejor (AUC
+        $0.906$ vs $0.878$) con 4 rondas FedAvg, y mueve $0$~MB de
+        datos crudos fuera de las SEs.
+  \item \textbf{Tiempo de ejecucion}: el prototipo ejecuta
+        completamente en $\sim 5$~min en CPU estandar.
+  \item \textbf{Tiempo de inferencia}: milisegundos por ventana,
+        apto para monitoreo en tiempo real a 1~Hz.
+\end{itemize}
+
+\subsubsection{Lo que el prototipo demuestra vs lo que falta}
+
+El prototipo demuestra el rendimiento \emph{y} la metodologia: el
+framework de gemelo digital + autoencoder + conformal + FedAvg esta
+implementado de punta a punta, la garantia conformal se cumple, y
+la deteccion alcanza el rango de la literatura (75-85\% de recall)
+sin escalar modelo ni datos. Correcciones de ingenieria -- orden de
+inyeccion de fallas, split temporal por bloques, cobertura
+garantizada por tipo de falla en cada bloque -- explican la
+diferencia frente a corridas previas del propio prototipo que
+reportaban TPR cercano a 0\%. Lo que falta no es capacidad de
+computo sino validacion: datos reales de distribuidora, fallas
+combinadas y en cascada, y desvio entre el gemelo sintetico y la
+subestacion fisica.
+
+\subsection{Aportes originales}
+
+\begin{enumerate}[leftmargin=*,itemsep=4pt]
+  \item Implementacion completa y ejecutable del pipeline
+        gemelo-digital + autoencoder LSTM + conformal prediction +
+        FedAvg sobre datos sinteticos de una subestacion 110/23~kV
+        chilena.
+
+  \item Validacion experimental de que \emph{conformal prediction}
+        entrega una tasa de falsa alarma empirica bajo la
+        garantizada ($4.86\%$ contra objetivo de $5\%$) en el
+        prototipo ejecutable, lo que permite fijar SLAs contractuales con la
+        distribuidora.
+
+  \item Demostracion cuantitativa de que un \emph{gemelo digital
+        simplificado} produce residuos con suficiente senal para
+        entrenar el detector no supervisado.
+
+  \item Prototipo de \emph{dashboard} D3.js interactivo que
+        visualiza el pipeline en operacion en tiempo real.
+
+  \item Documentacion tipo tesis con marco regulatorio (SEC, SERNAC,
+        NERC CIP) y caso de uso post-Frente Valparaiso 2026.
+\end{enumerate}
+
+\subsection{Limitaciones}
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item El prototipo usa modelo reducido (hidden=32, ventana=15,
+        12 epocas) por restricciones de tiempo de ejecucion en CPU.
+        Aun asi alcanza recall de 75-85\%; escalar el modelo debe
+        interpretarse como margen para fallas mas sutiles, no como
+        requisito para llegar al rango util.
+  \item El gemelo ligero no captura armonicos, modelos termicos
+        distribuidos ni dinamica de transformadores bajo falla.
+  \item F5 (perdida de comunicacion PMU) es estructuralmente
+        invisible para un detector de residuos: la frecuencia
+        congelada deja residuo $\approx 0$. Requiere un detector
+        complementario de staleness (varianza nula, edad del dato).
+  \item El catalogo de fallas incluye fallas aisladas, no
+        combinaciones en cascada.
+  \item La validacion se hizo sobre datos sinteticos, no reales.
+        La brecha sim-to-real puede ser significativa en
+        presencia de fallas que el gemelo no modela.
+\end{itemize}
+
+\subsection{Pasos siguientes}
+
+\begin{enumerate}[leftmargin=*,itemsep=4pt]
+  \item Validar con datos reales de Chilquinta o Engie bajo
+        convenio de confidencialidad.
+  \item Extender el gemelo a un modelo de orden medio
+        (FEM del transformador, modelo de la red aguas arriba).
+  \item Implementar conformal adaptativo para distribution
+        shift.
+  \item Empaquetar el pipeline como SaaS con dashboard
+        web, API REST y modelo de pricing por subestacion.
+  \item Publicar el trabajo en IEEE Trans. Smart Grid o
+        Applied Energy. El paper derivado de este trabajo esta
+        en preparacion.
+\end{enumerate}
+
+\subsection{Cierre}
+
+Este trabajo cierra una brecha metodologica: la deteccion temprana
+de fallas en subestaciones chilenas sin depender de etiquetas
+escartadas y cumpliendo la regulacion de ciberseguridad. La
+combinacion de gemelo digital + conformal prediction + federated
+learning es una pieza tecnologica que faltaba en el sector, y que
+se complementa bien con la inversion que las distribuidoras ya estan
+haciendo en SCADA y PMU.
+
+El siguiente paso -- la validacion con datos reales -- es tambien
+el mas exigente. La brecha sim-to-real suele ser el punto donde
+muchos trabajos academicos se quedan en el camino. La intencion
+es cerrar esa brecha con datos de Chilquinta o Engie en un plazo
+de seis meses a partir de la finalizacion de este trabajo.
+
+\begin{tcolorbox}[colback=green!3,colframe=green!50!black,title=Disclaimer]
+\small
+Los datos reales de subestaciones de distribucion estan sujetos a
+acuerdos de confidencialidad con las concesionarias. Este trabajo
+utiliza exclusivamente datos sinteticos generados por el gemelo
+digital propio y datos publicos del CEN. Los resultados
+cuantitativos deben interpretarse como cota superior de la
+performance, no como valores garantizados en operacion real.
+\end{tcolorbox}

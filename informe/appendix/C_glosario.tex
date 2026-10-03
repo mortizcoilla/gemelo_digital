@@ -1,0 +1,98 @@
+\chapter{Glosario de terminos y abreviaciones}
+
+\section{Abreviaciones}
+
+\begin{longtable}{lp{10cm}}
+\toprule
+\textbf{Abrev.} & \textbf{Significado} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+CEN     & Coordinador Electrico Nacional (Chile) \\
+CNE     & Comision Nacional de Energia (Chile) \\
+SEC     & Superintendencia de Electricidad y Combustibles (Chile) \\
+SERNAC  & Servicio Nacional del Consumidor (Chile) \\
+NERC CIP& Normativa de ciberseguridad electrica (EE.UU.) \\
+SEN     & Sistema Electrico Nacional (Chile) \\
+SAIDI   & System Average Interruption Duration Index \\
+SAIFI  & System Average Interruption Frequency Index \\
+SCADA   & Supervisory Control and Data Acquisition \\
+PMU     & Phasor Measurement Unit \\
+ROCOF   & Rate of Change of Frequency \\
+THD     & Total Harmonic Distortion \\
+LSTM    & Long Short-Term Memory (red neuronal recurrente) \\
+FedAvg  & Federated Averaging (algoritmo de aprendizaje federado) \\
+NTIC    & Norma Tecnica de Calidad de Servicio \\
+DP      & Diferentially Private (privacidad diferencial) \\
+FPR     & False Positive Rate \\
+TPR     & True Positive Rate (recall) \\
+F1      & Media armonica de precision y recall \\
+AUC     & Area Under the Curve (curva ROC) \\
+\bottomrule
+\end{longtable}
+
+\section{Terminos tecnicos}
+
+\paragraph{Barra AT (alta tension)}
+Conjunto de conductores en paralelo que operan a 110~kV en esta
+aplicacion. Es el lado de alta tension del transformador.
+
+\paragraph{Barra BT (baja tension)}
+Conductores a 23~kV. Es el lado del que salen los alimentadores
+hacia los clientes finales.
+
+\paragraph{Corriente nominal de linea}
+Corriente maxima que un alimentador puede transportar en regimen
+permanente. En este trabajo se asume 800~A.
+
+\paragraph{Demanda activa / reactiva}
+La potencia activa (MW) es la que realiza trabajo util; la
+reactiva (MVAR) es la debida a cargas magnetizantes (motores,
+condensadores). El factor de potencia es $\cos(\phi) = P / S$.
+
+\paragraph{Estado estacionario}
+Regimen en el que las variables electricas son constantes en el
+tiempo (o cambian lentamente). El modelo de flujo de potencia
+describe este regimen.
+
+\paragraph{Factor de potencia}
+Cociente entre potencia activa y potencia aparente:
+$\cos(\phi) = P / S$. Valores cercanos a 1 indican uso eficiente
+de la red.
+
+\paragraph{Intercambiabilidad}
+Propiedad estadistica de una secuencia de datos: cualquier
+permutacion es igualmente probable bajo la distribucion conjunta.
+Es el supuesto que requiere conformal prediction.
+
+\paragraph{Latencia de deteccion}
+Tiempo entre el inicio real de la falla y la primera alerta del
+sistema. Es la metrica operacional clave.
+
+\paragraph{Norma Tecnica de Calidad de Servicio (NTIC)}
+Normativa chilena que fija los indicadores SAIDI/SAIFI maximos
+por zona y los plazos de reposicion.
+
+\paragraph{Posicion de tap}
+Posicion del cambiador de tomas del transformador, que ajusta la
+relacion de transformacion para regular la tension BT.
+
+\paragraph{Residuo}
+Diferencia entre el valor observado por SCADA y el valor
+predicho por el gemelo digital. Es la materia prima del detector
+no supervisado.
+
+\paragraph{Sincrofasor}
+Medicion fasorial sincronizada por GPS. Permite medir el angulo
+de la tension con precision de microsegundos.
+
+\paragraph{Tap automatico}
+Mecanismo del transformador que ajusta la relacion de
+transformacion bajo carga, para mantener la tension BT en el
+valor de referencia.
+
+\paragraph{Zona de concesion}
+Area geografica donde una empresa distribuidora tiene la
+obligacion legal de prestar servicio. En Chile las zonas son
+asignadas por la SEC.
